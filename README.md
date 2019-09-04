@@ -60,7 +60,7 @@ Call the `obj.validate(data)` function which return a promise that can be handle
 For example:
 ```javascript
 try {
-    var json_to_validate = [{product_name: "Guitar"}, {product_name: "Piano", product_id: 1} ];
+    var json_to_validate = [{product_name: "Guitar", product_id: 2}, {product_name: "Piano", product_id: 1} ];
     mySchema.validate(json_to_validate)
         .then(res => {
             return res; 
