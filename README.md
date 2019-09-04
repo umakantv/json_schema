@@ -13,7 +13,6 @@ Supports the following data-types with their respective flags
 > 1. item_schema is to be provided in case of `array` types, and the `item_schema` will be initialized for type mentioned in the `item_schema` and not by `item_type`
 > 2. `object` item_types are not checked for `uniqueItems` filter
 
----
 ## Usage:
 Initialize the class instance `obj` with valid schema. 
 
@@ -72,7 +71,6 @@ try {
         })
 }
 ```
----
 ## To Do: 
 0. Redefine how item_type for an array is handled - reduce redundancy
 1. Have to distinguish between integers and floating point
