@@ -18,8 +18,7 @@ Supports the following data-types with their respective flags
 Initialize the class instance `obj` with valid schema. 
 
 For example:
-```
-
+```javascript
 require('json_schema')
 
 productSchema = {
@@ -60,7 +59,7 @@ var mySchema = new Schema(productSchema)
 Call the `obj.validate(data)` function which return a promise that can be handled appropriately
 
 For example:
-```
+```javascript
 try {
     var json_to_validate = [{product_name: "Guitar"}, {product_name: "Piano", product_id: 1} ];
     mySchema.validate(json_to_validate)
