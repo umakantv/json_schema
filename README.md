@@ -61,7 +61,7 @@ For example:
 ```javascript
 try {
     var json_to_validate = [{product_name: "Guitar", product_id: 2}, {product_name: "Piano", product_id: 1} ];
-    mySchema.validate(json_to_validate)
+    var result = mySchema.validate(json_to_validate)
         .then(res => {
             return res; 
             // returns true if valid json is passed
