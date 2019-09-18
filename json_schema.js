@@ -1,11 +1,10 @@
 
-class Schema {
-    // Returns a sort of generic defined data type
-    
+class Schema {    
     constructor(_schema) {
       return new Promise((resolve, reject) => {
         this.wrapper(_schema)
         .then(res => {
+          delete(this.response);
           resolve(this);
         })
         .catch(err => {
@@ -51,6 +50,7 @@ class Schema {
 
           // set default behaviour
           _schema.pattern != undefined ? this.pattern = _schema.pattern : undefined;
+          _schema.enum != undefined ? this.enum = _schema.enum : undefined;
           _schema.minLength != undefined ? this.minLength = _schema.minLength : undefined;
           _schema.maxLength != undefined ? this.maxLength = _schema.maxLength : undefined;
 
@@ -60,38 +60,27 @@ class Schema {
         // we have minItems, maxItems
         // we may have unique
         this.items = [];
+        _schema.enum != undefined ? this.enum = _schema.enum : undefined;
 
-        // try item_type and item_schema
-        if(_schema.item_type == undefined) {
-            this.response.status = false;
-            this.response.errors.push(this.errorBody(
-              `item_type is not specified for ${this.name}.`,
-              { message: `item_type is not specified for ${this.name}.` }));
+        if(_schema.item_schema == undefined) {
+          this.response.status = false;
+          this.response.errors.push(this.errorBody(
+            `item_schema is not specified for ${this.name}'s items.`,
+            { message: `item_schema is not specified for ${this.name}'s items.`, }));
         } else {
-          this.item_type = _schema.item_type;
-          var temp = ["number", "string", "array", "object"];
-          if(temp.includes(_schema.item_type)) {
-              if(_schema.item_schema == undefined) {
-                this.response.status = false;
-                this.response.errors.push(this.errorBody(
-                  `item_schema is not specified for ${this.name}'s items.`,
-                  { message: `item_schema is not specified for ${this.name}'s items.`, }));
-              } else {
-                
-                this.item_schema =  await new Schema(_schema.item_schema)
-                  .then((res) => {
-                      // console.log(res);
-                      return res;
-                  })
-                  .catch((err) => {
-                      // console.log(err);
-                    this.response.status = false;
-                    this.response.errors.push(this.errorBody(
-                      `item_schema for ${this.name} has the following errors.`,
-                      { message: `item_schema for ${this.name} has the following errors.`}));
-                    });
-              }
-          } 
+          
+          this.item_schema =  await new Schema(_schema.item_schema)
+            .then((res) => {
+                // console.log(res);
+                this.item_type = _schema.item_schema.type;
+                return res;
+            })
+            .catch((err) => {
+                // console.log(err);
+              this.response.status = false;
+              this.response.errors.push(this.errorBody(
+                `item_schema for ${this.name} has the following errors.`, err));
+              });
         }
         
         // set default behaviour
@@ -135,8 +124,9 @@ class Schema {
             `Not a permissible data-type for ${this.name}`,
             { message: `Not a permissible data-type for ${this.name}`}));
       }
+
       // common enum operations
-      if(this.type in ["string", "number", "array"]) {
+      if(["string", "number", "array"].includes(this.type)) {
         _schema.enum != undefined? this.enum = _schema.enum : undefined;
         if(this.enum != undefined) {
           this.permittedValues = {};
@@ -163,26 +153,37 @@ class Schema {
         body : body
       }
     }
-    async validate(data) {
+    async validate(data, _root, _key) {
         // validate only numbers, strings, arrays directly
         // we handle objects through recursion
-        if((typeof(this.required) == "function" && this.required() ) || this.required) {
+        // console.log(data, _root, _key)
+        
+        typeof(this.required) == "function"? this.required = this.required(_root, _key): '';
+        if(this.required) {
           if(!data) {
             return new Promise((resolve, reject) => {
-              reject(this.error.body(`${this.name} is required`, {message: `${this.name} is required`}));
-            })
+              reject(this.errorBody(`${this.name} is required`, {message: `${this.name} is required`}));
+            });
           }
         } else {
+          // 
+          // if not required and no data is provided, then resolve
+          if(!data) return new Promise((resolve, reject) => {
+            resolve();
+          });
         }
-        if(this.type == "number" && typeof(data) == "number") { 
-    
-            if(this.minimum !== undefined && (data < this.minimum) ) 
+
+        if( this.type == "number" && typeof(data) == "number") { 
+            typeof(this.minimum) == "function"? this.minimum = this.minimum(_root, _key): undefined;
+            // console.log(this.minimum, this.maximum)
+            if(this.minimum && this.minimum > data) 
                 return new Promise((resolve, reject) => {
                   reject(this.errorBody(
                     `Value of '${this.name}' can have minimum value equal to ${this.minimum}.`,
                     { message: `Value of '${this.name}' can have minimum value equal to ${this.minimum}.`}));
                 });
-            if(this.maximum !== undefined && (data > this.maximum))
+            typeof(this.maximum) == "function"? this.maximum = this.maximum(_root, _key): undefined;
+            if(this.maximum && this.maximum < data)
               return new Promise((resolve, reject) => {
                 reject(this.errorBody(
                   `Value of '${this.name}' can have maximum value equal to ${this.maximum}.`,
@@ -192,51 +193,70 @@ class Schema {
             // check for enum later, that's why not returning true yet
     
         } else if(this.type == "string" && typeof(data) == "string") {
-    
-            if(this.minLength != undefined && (data.length < this.minLength))
-                return new Promise((resolve, reject) => {
-                  reject(this.errorBody(
-                    `'${this.name}' can have minimum length equal to ${this.minLength}.`,
-                    { message: `'${this.name}' can have minimum length equal to ${this.minLength}.`}));
-                });
-            if(this.maxLength != undefined && (data.length > this.maxLength))
+
+              typeof(this.maxLength) == "function"? this.maxLength =  this.maxLength(_root, _key): '';
+              if(this.maxLength && data.length > this.maxLength)
                 return new Promise((resolve, reject) => {
                   reject(this.errorBody(
                     `'${this.name}' can have maximum length equal to ${this.maxLength}.`,
                     { message: `'${this.name}' can have maximum length equal to ${this.maxLength}.`}));
                 });
-            if(this.pattern != undefined && data.match(this.pattern) )
+
+              typeof(this.minLength) == "function"? this.minLength =  this.minLength(_root, _key): '';
+              if(this.minLength && data.length < this.minLength)
+              return new Promise((resolve, reject) => {
+                reject(this.errorBody(
+                  `'${this.name}' can have minimum length equal to ${this.minLength}.`,
+                  { message: `'${this.name}' can have minimum length equal to ${this.minLength}.`}));
+              });
+
+            if(this.pattern && !data.match(this.pattern) )
                 return new Promise((resolve, reject) => {
                   reject(this.errorBody(
                     `'${this.name}' does not match the required pattern.`,
                     { message: `'${this.name}' does not match the required pattern.`}));
                 });
+
             // check for enum later, that's why not returning true yet
     
         } else if(this.type == "array" && Array.isArray(data)) {
             // minItems, maxItems
-            if(data.length > this.maxItems || data.length < this.minItems) {
+            // console.log(_key);
+            typeof(this.maxItems) == "function"? this.maxItems =  this.maxItems(_root, _key): '';
+
+            if(this.maxItems && data.length > this.maxItems)
                 return new Promise((resolve, reject) => {
                   reject(this.errorBody(
-                    `'${this.name}' can have minimum length equal to ${this.minLength}.`,
-                  { message: `'${this.name}' can have minimum length equal to ${this.minLength}.`}));
+                    `'${this.name}' can have maximum length equal to ${this.maxLength}.`,
+                  { message: `'${this.name}' can have maximum length equal to ${this.maxItems}.`}));
                 });
-            }
+
+            typeof(this.minItems) == "function"? this.minItems =  this.minItems(_root, _key): '';
+            
+              if(this.minItems && data.length < this.minItems)
+                return new Promise((resolve, reject) => {
+                  reject(this.errorBody(
+                    `'${this.name}' can have minimum length equal to ${this.minItems}.`,
+                    { message: `'${this.name}' can have minimum length equal to ${this.minItems}.`}));
+                });
             // each item
             for(var item in data) {
-                var _item = await this.item_schema.validate(data[item])
+              // console.log(data)
+                await this.item_schema.validate(data[item], _root, item)
                 .then()
                 .catch(err => {
+                  console.log(err)
                     return new Promise((resolve, reject) => {
                       reject(this.errorBody(
-                        `'${this.name}' failed due to the following reason(s) at position ${item}.`, err));
+                        `${this.name} failed due to the following reason(s) at position ${item}.`, err));
                     });
                 })
             }
+
             // unique values when item_type is not an object
             if(this.item_type != "object" && this.uniqueItems) {
-              values_seen = {}
-              for(var item in data) 
+              var values_seen = {}
+              for(var item in data)
                 if(values_seen.hasOwnProperty(data[item])) 
                     return new Promise((resolve, reject) => {
                       reject(this.errorBody(
@@ -250,20 +270,26 @@ class Schema {
         } else if(this.type == "object" && typeof(data) == typeof({})) {
             for (var key in this.properties) {
               // check if data hasOwnProperty(key)
-                if(!data.hasOwnProperty(key)) {
+              var t = this.schemas[this.properties[key]].required;
+              if(typeof(t) == "function") t = t(_root, _key);
+                if(!data.hasOwnProperty(key) && t) {
                     // return reject promise
-                      return new Promise((resolve, reject) => {
-                        reject(this.errorBody(
-                          `${this.name} should have the property ${key}`,
-                        { message: `${this.name} should have the property ${key}`}));
+                    return new Promise((resolve, reject) => {
+                      reject({
+                        root: this.schemas[this.properties[key]].name,
+                        description: this.schemas[this.properties[key]].description,
+                        title: `${this.name} should have the property ${key}`,
+                        body: { message: `${this.name} should have the property ${key}`}
                       });
+                    });
                 }
     
-                await this.schemas[this.properties[key]].validate(data[key])
+                await this.schemas[this.properties[key]].validate(data[key], _root, _key)
                 .then((res)=> {
                   // do nothing as other keys are to be checked
                   // console.log(res);
                 }).catch((err) => {
+                    console.log(err)
                     return new Promise((resolve, reject) => {
                       reject(this.errorBody(
                         `${this.name} failed at the property ${key}`, err));
@@ -276,31 +302,36 @@ class Schema {
             { message: `Invalid type at ${this.name}.`}));
         });
     
+        // common enum operations
+        if(["string", "number"].includes(this.type)) {
+          if(this.enum != undefined) {
+              if(typeof(this.enum) == "function") {
+                this.enum = this.enum(_root);
+                // console.log(this.enum)
+                this.permittedValues = {};
+                for (var item in this.enum) {
+                  this.permittedValues[`${this.enum[item]}`] = 1;
+                }
+                // console.log(this.permittedValues)
+              }
+          }
+        }
         // check for common enum operations
         if(this.type != "object") {
           if(this.enum != undefined)  {
+            // console.log(this.enum)
             // checking strings and numbers
             if(this.type != "array") {
               if(!this.permittedValues.hasOwnProperty(data)) 
                   return new Promise((resolve, reject) => {
                       reject(this.errorBody(
                         `${this.name} does not have a permissible value.`,
-                      { message: `${this.name} should have one of the following values: [${this.permittedValues}].`}));
+                      { message: `${this.name} should have one of the following values: ${this.enum.toString()}.`}));
                   });
-            } 
-            // checking for arrays
-            else {
-              for (var item in data) {
-                if(!this.permittedValues.hasOwnProperty(item))
-                    return new Promise((resolve, reject) => {
-                      reject(this.errorBody(
-                        `${this.name} does not have all permissible values.`,
-                      { message: `${this.name} should have one of the following values: [${this.permittedValues}].`}));
-                    });
-              }
             }
           }
         }
+
         // data passed all tests
         return new Promise((resolve, reject) => {
           resolve(true);
